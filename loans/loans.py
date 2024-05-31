@@ -88,6 +88,32 @@ class Loans(Resource):
         except:
             return {'error': 'unable to add a new loan'}, 404
 
+
+class Loan(Resource):
+    def get(self, loan_id):
+        try:
+            # Use the find_one method to retrieve the book by its ID from MongoDB
+            loan = loans.find_one({'id': loan_id})
+            if loan:
+                return loan, 200
+            else:
+                return {'error': 'Loan not found'}, 404
+        except Exception as e:
+            return {'error': 'Database operation failed', 'details': str(e)}, 500
+
+    def delete(self, loan_id):
+        try:
+            # First check if the loan exists
+            loan = loans.find_one({'id': loan_id})
+            if loan:
+                # If the book exists, delete it from the books collection
+                loans.delete_one({'id': loan_id})
+                return loan_id, 200
+            else:
+                return {'error': 'Loan not found'}, 404
+        except Exception as e:
+            return {'error': 'Database operation failed', 'details': str(e)}, 500
+
     def is_valid_date(date_string):
         try:
             year, month, day = date_string.split('-')
@@ -100,3 +126,7 @@ class Loans(Resource):
 
 
 api.add_resource(Loans, '/loans')
+api.add_resource(Loan, '/loan/<string:loan_id>')
+
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=5002, debug=True)
