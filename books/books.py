@@ -1,3 +1,5 @@
+import json
+from json import dumps
 from flask import Flask, request, jsonify
 from flask_restful import Resource, Api, reqparse
 import requests
@@ -262,44 +264,21 @@ class Top(Resource):
 
     def get(self):
         # Filter books that have at least 3 ratings.
+        pipeline = [
+            {"$match": {"values": {"$size": 3}}},
+            {"$sort": {"average": -1}},
+            {"$limit": 3}  # Limits the result to top 3
+        ]
+        top_ratings = list(ratings.aggregate(pipeline))
 
-        valid = {book_id: rate for book_id, rate in ratings.items() if len(rate['values']) >= 3}
+        # Additional logic to include ties at the 3rd place if necessary
+        if len(top_ratings) == 3:
+            third_average = top_ratings[-1]['average']
+            tie_ratings = list(ratings.find({"average": third_average}))
+            if len(tie_ratings) > 1:
+                top_ratings.extend([rating for rating in tie_ratings if rating not in top_ratings])
 
-        # Return an empty list if no books have sufficient ratings
-        if len(valid) == 0:
-            return [], 200, {'Content-Type': 'application/json'}
-
-        answer_list = []
-
-        # Sort valid books by average rating in descending order
-        top_books_sorted = sorted(valid.items(), key=lambda item: item[1]['average'], reverse=True)
-
-        max_books = min(3, len(top_books_sorted))  # Determine the number of top books to include
-
-        # Add top 3 or fewer books to the answer list
-        for i in range(max_books):
-            book_id, rate = top_books_sorted[i]
-            answer_list.append({
-                'id': book_id,
-                'title': books[book_id]['title'],
-                'average': rate['average']
-            })
-
-        # Include additional books that have the same average rating as the last included book
-        last_avg = answer_list[-1]['average'] if answer_list else None
-        i += 1  # Move the index to the next book after the initial top set
-
-        # Check for additional books with the same average rating
-        while i < len(top_books_sorted) and top_books_sorted[i][1]['average'] == last_avg:
-            book_id, rate = top_books_sorted[i]
-            answer_list.append({
-                'id': book_id,
-                'title': books[book_id]['title'],
-                'average': rate['average']
-            })
-            i += 1
-
-        return answer_list, 200, {'Content-Type': 'application/json'}
+        return jsonify(json.loads(dumps(top_ratings)))
 
 
 api.add_resource(Books, '/books')
