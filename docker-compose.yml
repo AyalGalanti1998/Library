@@ -18,8 +18,8 @@ services:
     restart: always
     volumes:
       - type: bind
-        source: ./books
-        target: /books
+        source: ./app
+        target: /app
     environment:
       FLASK_DEBUG: "true"
     ports:
@@ -32,8 +32,8 @@ services:
     restart: always
     volumes:
       - type: bind
-        source: ./loans
-        target: /loans
+        source: ./app
+        target: /app
     environment:
       FLASK_DEBUG: "true"
     ports:
@@ -47,8 +47,8 @@ services:
     restart: always
     volumes:
       - type: bind
-        source: ./loans
-        target: /loans
+        source: ./app
+        target: /app
     environment:
       FLASK_DEBUG: "true"
     ports:
