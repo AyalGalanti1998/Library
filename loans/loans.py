@@ -2,25 +2,38 @@ from flask import Flask, request, jsonify
 from flask_restful import Resource, Api, reqparse
 import requests
 import uuid
+from pymongo import MongoClient
+import re
 
 app = Flask(__name__)
 api = Api(app)
 
-loans = []
-
+MongoDB_Url = 'mongodb+srv://hilaashkenazy:Salasana99@library.odr2f1t.mongodb.net/?retryWrites=true&w=majority&appName=Library'
 Books_Url = 'https://localhost:5001/books'
+
+client = MongoClient(MongoDB_Url)
+db = client["library"]  # 'library' is the database name
+loans = db["loans"]
 
 
 class Loans(Resource):
-    def get(self):
-        args = request.args
-        filtered_loans = list(loans.values())
+    class Loans(Resource):
+        def get(self):
+            args = request.args
+            query = {}
 
-        # Filter based on other field=value queries
-        for key, value in args.items():
-            filtered_loans = [loan for loan in filtered_loans if loan.get(key) == value]
+            # Build the MongoDB query based on provided query parameters
+            for key, value in args.items():
+                # Assume all values are stored as strings; modify if your schema differs
+                query[key] = value
 
-        return {'loans': list(filtered_loans)}, 200
+            try:
+                # Execute the query using MongoDB's find method
+                filtered_loans = list(loans.find(query))
+            except Exception as e:
+                return {'error': 'Database query failed', 'details': str(e)}, 500
+
+            return {'loans': filtered_loans}, 200
 
     def post(self):
 
@@ -38,21 +51,42 @@ class Loans(Resource):
         try:
             args = parser.parse_args()
         except Exception as e:
-            return {"error: Unprocessable Content"}, 422
+            return {"error": e}, 422
 
         if not self.is_valid_date(args['loanDate']):
             return ("error: Invalid date"), 422
 
+        if loans.find_one({'ISBN': args['ISBN']}):
+            return {"error": "Book is already on loan"}, 422
+
+        # Check if the member already has 2 or more books on loan
+        if loans.count_documents(
+                {'memberName': args['memberName']}) >= 2:
+            return {"error": "Member has already 2 or more books on loan"}, 422
+
         query = f"?q=isbn:{args["ISBN"]}"
         try:
             response = request.get(Books_Url + query)
-        except Exception as e:
-            return e,500
+            response.raise_for_status()
+            if response.status_code != 200:
+                return jsonify({'error': 'Database operation failed'}), 500
 
-        loans.appnd
+            if not response:
+                return {"error": "This book is not found in the library"}, 422
 
-
-
+            loan_id = str(uuid.uuid4())
+            loan = {
+                'memberName': args['memberName'],
+                'ISBN': args['ISBN'],
+                'loanDate': args['loanDate'],
+                'title': response.json()['title'],
+                'bookID': response.json()['id'],
+                'loanID': loan_id
+            }
+            loans.insert_one(loan)
+            return jsonify(loan), 201
+        except:
+            return {'error': 'unable to add a new loan'}, 404
 
     def is_valid_date(date_string):
         try:
