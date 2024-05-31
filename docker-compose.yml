@@ -2,23 +2,21 @@ version: '3.8'  # Using version 3.8 of the Docker Compose file format
 
 services:
   nginx:
-    image: nginx:latest # pulling image from DockerHub
+    #    image: nginx:latest # pulling image from DockerHub
+    build: ./nginx
     ports:
       - "80:80"
-    volumes:
-      - type: bind
-        source: ./nginx.conf
-        target: /etc/nginx/nginx.conf
     depends_on:
       - books
       - loans
+      - loans-2
 
   books:
     build: ./books
     restart: always
     volumes:
       - type: bind
-        source: ./app
+        source: ./books
         target: /app
     environment:
       FLASK_DEBUG: "true"
@@ -32,7 +30,7 @@ services:
     restart: always
     volumes:
       - type: bind
-        source: ./app
+        source: ./loans
         target: /app
     environment:
       FLASK_DEBUG: "true"
@@ -47,7 +45,7 @@ services:
     restart: always
     volumes:
       - type: bind
-        source: ./app
+        source: ./loans
         target: /app
     environment:
       FLASK_DEBUG: "true"
@@ -61,6 +59,11 @@ services:
     image: mongo
     ports:
       - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  mongo_data:
 
 
 
