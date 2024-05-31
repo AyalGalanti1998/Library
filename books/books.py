@@ -2,37 +2,50 @@ from flask import Flask, request, jsonify
 from flask_restful import Resource, Api, reqparse
 import requests
 import uuid
-
-BASE_URL = 'https://www.googleapis.com/books/v1/volumes'
+from pymongo import MongoClient
 
 app = Flask(__name__)
 api = Api(app)
 
-books = []
-ratings = []
+BASE_URL = 'https://www.googleapis.com/books/v1/volumes'
+MongoDB_Url = 'mongodb+srv://hilaashkenazy:Salasana99@library.odr2f1t.mongodb.net/?retryWrites=true&w=majority&appName=Library'
+
+client = MongoClient(MongoDB_Url)
+db = client["library"]  # 'library' is the database name
+books = db["books"]  # 'books' collection
+ratings = db["ratings"]  # 'ratings' collection
 
 
 class Books(Resource):
     def get(self):
         """
-               Retrieves books from the collection filtered based on query parameters.
-               Supports filtering by various fields and special handling for 'language_contains' queries.
-               """
+        Retrieves books from the MongoDB collection filtered based on query parameters.
+        Supports filtering by various fields.
+        """
         # Retrieve query parameters
         args = request.args
-        filtered_books = list(books.values())
+        query = {}
 
-        # Filter based on other field=value queries
+        # Convert query parameters directly into a MongoDB query
         for key, value in args.items():
-            filtered_books = [book for book in filtered_books if book.get(key) == value]
+            # Append each query parameter to the MongoDB query dictionary
+            query[key] = value
 
-        return {'books': list(filtered_books)}, 200
+        try:
+            # Perform the query using MongoDB's find method
+            filtered_books = list(books.find(query))
+        except Exception as e:
+            return {'error': 'Database query failed', 'details': str(e)}, 500
+
+        # Convert MongoDB documents to a list of dictionaries if needed
+        # This step depends on whether your MongoDB driver returns documents as dicts or if you need to convert them
+        return {'books': [book for book in filtered_books]}, 200
 
     def post(self):
         """
-                Creates a new book entry based on data provided via a POST request, fetching additional data from external APIs.
-                Returns the newly created book details.
-                """
+        Creates a new book entry based on data provided via a POST request, fetching additional data from external APIs.
+        Returns the newly created book details.
+        """
         # Check the content type of the request to ensure it's JSON
         if request.headers['Content-Type'] != 'application/json':
             return {'error': 'Unsupported media type'}, 415
@@ -50,12 +63,11 @@ class Books(Resource):
         try:
             args = parser.parse_args()
         except Exception as e:
-            return {"error: Unprocessable Content"}, 422
+            return {"error": e}, 422
 
         # Check if a book with the same ISBN already exists
-        for book in books.values():  # Assuming 'books' is a dictionary where values are book details
-            if book['ISBN'] == args['ISBN']:
-                return {'error': 'A book with the same ISBN already exists'}, 422
+        if books.find_one({'ISBN': args['ISBN']}):
+            return {'error': 'A book with the same ISBN already exists'}, 422
 
         # Generate a unique ID for the book
         book_id = str(uuid.uuid4())
@@ -68,13 +80,7 @@ class Books(Resource):
         book_data = response.json()['items'][0]['volumeInfo'] if response.ok and 'items' in response.json() else {}
 
         # Handle authors data, defaulting to "missing" if not available
-        if len(book_data.get('authors', [])) < 1:
-            authors = "missing"
-        else:
-            authors = book_data['authors'][0]
-            if len(book_data['authors']) > 1:
-                for author in book_data['authors'][1:]:
-                    authors += " and " + author
+        authors = " and ".join(book_data.get('authors', ['missing']))
 
         # Fill in the book details
         book_details = {
@@ -87,123 +93,147 @@ class Books(Resource):
             'id': book_id,
         }
 
-        # Store the new book in the in-memory data store
-        books[book_id] = book_details
-        ratings[book_id] = {
-            'values': [],
-            'average': 0,
-            'title': args['title'],
-            'id': book_id,
-        }
+        # Store the new book in the MongoDB database
+        books.insert_one(book_details)
+        ratings.insert_one({'id': book_id, 'values': [], 'average': 0, 'title': args['title']})
 
         # Return the new book details with 201 Created status
-        return book_id, 201
+        return {'book_id': book_id}, 201
 
 
 class Book(Resource):
     def get(self, book_id):
         """
-                Retrieves a book by its ID from the books collection.
-                Returns the book details if found, otherwise returns a 404 error.
-                """
-        # Check if the book is in our local 'database'
-        if book_id in books:
-            return books[book_id], 200
-        else:
-            return {'error': 'Book not found'}, 404
+        Retrieves a book by its ID from the MongoDB collection.
+        Returns the book details if found, otherwise returns a 404 error.
+        """
+        try:
+            # Use the find_one method to retrieve the book by its ID from MongoDB
+            book = books.find_one({'id': book_id})
+            if book:
+                return book, 200
+            else:
+                return {'error': 'Book not found'}, 404
+        except Exception as e:
+            return {'error': 'Database operation failed', 'details': str(e)}, 500
 
     def delete(self, book_id):
         """
-               Deletes a book by its ID from the books collection.
-               Returns the book ID if successful, otherwise returns a 404 error if the book is not found.
-               """
-        if book_id in books:
-            del books[book_id]
-            del ratings[book_id]
-            return book_id, 200
-        else:
-            return {'error': 'Book not found'}, 404
-
-    def put(self, book_id):
+        Deletes a book by its ID from the MongoDB collection.
+        Returns the book ID if successful, otherwise returns a 404 error if the book is not found.
         """
-              Updates the details of a specific book by book_id, validating and storing the provided data.
-              """
-        # Check the content type of the request to ensure it's JSON
-        if request.headers['Content-Type'] != 'application/json':
-            return {'error': 'Unsupported media type'}, 415
-        data = request.get_json()
-        # Verify that the book exists in the books dictionary using book_id
-        if book_id not in books:
-            return {'error': 'Book not found'}, 404
-        else:
+        try:
+            # First check if the book exists
+            book = books.find_one({'id': book_id})
+            if book:
+                # If the book exists, delete it from the books collection
+                books.delete_one({'id': book_id})
+                # Also delete related ratings, if necessary
+                ratings.delete_one({'id': book_id})
+                return {'message': f'Book with ID {book_id} deleted'}, 200
+            else:
+                return {'error': 'Book not found'}, 404
+        except Exception as e:
+            return {'error': 'Database operation failed', 'details': str(e)}, 500
+
+    class Book(Resource):
+        def put(self, book_id):
+            """
+            Updates the details of a specific book by book_id, validating and storing the provided data.
+            """
+            # Check the content type of the request to ensure it's JSON
+            if request.headers['Content-Type'] != 'application/json':
+                return {'error': 'Unsupported media type'}, 415
+
+            data = request.get_json()
+
+            # Verify that the book exists in MongoDB using book_id
+            if not books.find_one({'id': book_id}):
+                return {'error': 'Book not found'}, 404
+
             # Initialize a request parser to validate and parse input data
             parser = reqparse.RequestParser()
             parser.add_argument('title', required=True, help="Title cannot be blank")
             parser.add_argument('ISBN', required=True, help="ISBN cannot be blank")
-            parser.add_argument('genre', required=True, help="Genre cannot be blank")
+            parser.add_argument('genre', required=True, type=str,
+                                choices=['Fiction', 'Children', 'Biography', 'Science', 'Science Fiction', 'Fantasy',
+                                         'Other'],
+                                help="Genre must be one of 'Fiction', 'Children', 'Biography', 'Science', 'Science Fiction', 'Fantasy', or 'Other'")
             parser.add_argument('authors', required=True, help="Authors cannot be blank")
-            parser.add_argument('publishedDate', required=True, help="publishedDate cannot be blank")
+            parser.add_argument('publishedDate', required=True, help="Published Date cannot be blank")
             parser.add_argument('publisher', required=True, help="Publisher cannot be blank")
-            parser.add_argument('id', required=True, help="ID cannot be blank")
 
             try:
                 # Parse the request arguments based on the defined rules
                 args = parser.parse_args()
             except Exception as e:
-                return {"error": "Unprocessable Content"}, 422
+                return {"error": e}, 422
 
-            # Construct a dictionary of the book details from parsed arguments
-            book_details = {
+            # Update the book details in MongoDB
+            update_fields = {
                 'title': args['title'],
                 'authors': args['authors'],
                 'ISBN': args['ISBN'],
                 'publisher': args['publisher'],
                 'publishedDate': args['publishedDate'],
                 'genre': args['genre'],
-                'id': args['id']
             }
 
-            books[book_id] = book_details
-
-            return args['id'], 200
+            try:
+                # Update the document using MongoDB's update_one method
+                books.update_one({'id': book_id}, {'$set': update_fields})
+                return {'message': 'Book updated successfully', 'id': book_id}, 200
+            except Exception as e:
+                return {'error': 'Database update failed', 'details': str(e)}, 500
 
 
 class Ratings(Resource):
     def get(self):
         """
-            A Resource class to fetch ratings based on filter criteria provided through query parameters.
-            """
-        args = request.args  # Retrieve query parameters from the request
-        # Start with all ratings
-        filtered_ratings = ratings.values()
+        A Resource class to fetch ratings based on filter criteria provided through query parameters.
+        """
+        args = request.args
+        query = {}
 
-        # Iterate over each query parameter to apply filters
+        # Build the MongoDB query based on provided query parameters
         for key, value in args.items():
-            filtered_ratings = [rate for rate in filtered_ratings if str(rate.get(key)) == value]
+            # Assume all values are stored as strings; modify if your schema differs
+            query[key] = value
 
-        return {'ratings': list(filtered_ratings)}, 200
+        try:
+            # Execute the query using MongoDB's find method
+            filtered_ratings = list(ratings.find(query))
+        except Exception as e:
+            return {'error': 'Database query failed', 'details': str(e)}, 500
+
+        return {'ratings': filtered_ratings}, 200
 
 
 class Rating(Resource):
     def get(self, rate_id):
         """
-            A Resource class to fetch ratings for a specific book using its rate_id.
-            """
-        # Check if the specified rate_id exists in the ratings dictionary
-        if rate_id in ratings:
-            return ratings[rate_id], 200
-        else:  # No book exists with the given rate id, return an error message.
-            return {'error': 'Book not found'}, 404
+        A Resource class to fetch ratings for a specific book using its rate_id.
+        """
+        try:
+            # Use the find_one method to retrieve the rating by its ID from MongoDB
+            rating = ratings.find_one({'id': rate_id})
+            if rating:
+                return rating, 200
+            else:
+                return {'error': 'Rating not found'}, 404
+        except Exception as e:
+            return {'error': 'Database operation failed', 'details': str(e)}, 500
 
 
 class RateValues(Resource):
     def post(self, rate_id):
         """
-           A Resource class to handle the POST requests for adding new ratings to books.
-           """
-        # Check if the specified rate_id exists in the ratings dictionary
-        if rate_id not in ratings:
-            return {'error': 'Book not found'}, 404
+        A Resource class to handle the POST requests for adding new ratings to books.
+        """
+        # Verify if the specified rate_id exists in the MongoDB ratings collection
+        rating = ratings.find_one({'id': rate_id})
+        if not rating:
+            return {'error': 'Rating not found'}, 404
 
         data = request.get_json()
         if request.headers['Content-Type'] != 'application/json':
@@ -213,13 +243,16 @@ class RateValues(Resource):
         if not data or 'value' not in data or not (1 <= data['value'] <= 5):
             return {"error": "Unprocessable Content"}, 422  # Return error if the value is not valid
 
-        # Append the new value to the list of values for this book's ratings
-        ratings[rate_id]['values'].append(data['value'])
-        # Calculate the new average rating after adding the new value
-        new_average = sum(ratings[rate_id]['values']) / len(ratings[rate_id]['values'])
-        ratings[rate_id]['average'] = new_average
-
-        return new_average, 201
+        try:
+            # Append the new value to the list of values for this book's ratings
+            new_values = rating['values'] + [data['value']]
+            # Calculate the new average rating after adding the new value
+            new_average = sum(new_values) / len(new_values)
+            # Update the values and average in the MongoDB document
+            ratings.update_one({'id': rate_id}, {'$set': {'values': new_values, 'average': new_average}})
+            return {'new_average': new_average}, 201
+        except Exception as e:
+            return {'error': 'Database update failed', 'details': str(e)}, 500
 
 
 class Top(Resource):

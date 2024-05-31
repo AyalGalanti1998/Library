@@ -8,6 +8,8 @@ api = Api(app)
 
 loans = []
 
+Books_Url = 'https://localhost:5001/books'
+
 
 class Loans(Resource):
     def get(self):
@@ -38,21 +40,29 @@ class Loans(Resource):
         except Exception as e:
             return {"error: Unprocessable Content"}, 422
 
+        if not self.is_valid_date(args['loanDate']):
+            return ("error: Invalid date"), 422
+
+        query = f"?q=isbn:{args["ISBN"]}"
+        try:
+            response = request.get(Books_Url + query)
+        except Exception as e:
+            return e,500
+
+        loans.appnd
 
 
 
 
-
-
-        def is_valid_date(date_string):
-            try:
-                year, month, day = date_string.split('-')
-                if len(year) == 4 and len(month) == 2 and len(day) == 2:
-                    year, month, day = int(year), int(month), int(day)
-                    return 1 <= month <= 12 and 1 <= day <= 31
-                return False
-            except ValueError:
-                return False
+    def is_valid_date(date_string):
+        try:
+            year, month, day = date_string.split('-')
+            if len(year) == 4 and len(month) == 2 and len(day) == 2:
+                year, month, day = int(year), int(month), int(day)
+                return 1 <= month <= 12 and 1 <= day <= 31
+            return False
+        except ValueError:
+            return False
 
 
 api.add_resource(Loans, '/loans')
