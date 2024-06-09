@@ -1,5 +1,7 @@
 import json
 from json import dumps
+
+import pymongo
 from flask import Flask, request, jsonify
 from flask_restful import Resource, Api, reqparse
 import requests
@@ -10,9 +12,9 @@ app = Flask(__name__)
 api = Api(app)
 
 BASE_URL = 'https://www.googleapis.com/books/v1/volumes'
-MongoDB_Url = 'mongodb+srv://hilaashkenazy:Salasana99@library.odr2f1t.mongodb.net/?retryWrites=true&w=majority&appName=Library'
+MongoDB_Url = "mongodb://mongo:27017/"
 
-client = MongoClient(MongoDB_Url)
+client = pymongo.MongoClient(MongoDB_Url)
 db = client["library"]  # 'library' is the database name
 books = db["books"]  # 'books' collection
 ratings = db["ratings"]  # 'ratings' collection
@@ -20,28 +22,18 @@ ratings = db["ratings"]  # 'ratings' collection
 
 class Books(Resource):
     def get(self):
-        """
-        Retrieves books from the MongoDB collection filtered based on query parameters.
-        Supports filtering by various fields.
-        """
-        # Retrieve query parameters
-        args = request.args
         query = {}
-
-        # Convert query parameters directly into a MongoDB query
-        for key, value in args.items():
-            # Append each query parameter to the MongoDB query dictionary
+        for key, value in request.args.items():
             query[key] = value
 
         try:
-            # Perform the query using MongoDB's find method
-            filtered_books = list(books.find(query))
+            # Fetching books based on query parameters
+            filtered_books = list(books.find(query, {'_id': 0}))  # '_id': 0 to exclude the MongoDB id from results
+            return jsonify(filtered_books)
         except Exception as e:
             return {'error': 'Database query failed', 'details': str(e)}, 500
 
-        # Convert MongoDB documents to a list of dictionaries if needed
-        # This step depends on whether your MongoDB driver returns documents as dicts or if you need to convert them
-        return {'books': [book for book in filtered_books]}, 200
+
 
     def post(self):
         """
@@ -113,11 +105,15 @@ class Book(Resource):
             # Use the find_one method to retrieve the book by its ID from MongoDB
             book = books.find_one({'id': book_id})
             if book:
-                return book, 200
+                # If book is found, convert ObjectId to string if necessary and prepare the response
+                if '_id' in book:
+                    book['bookID'] = str(book['_id'])  # Convert ObjectId to string and rename the key
+                    del book['_id']  # Remove the original '_id' to avoid serialization issues
+                return jsonify(book)
             else:
-                return {'error': 'Book not found'}, 404
+                return jsonify({'error': 'Book not found'}), 404
         except Exception as e:
-            return {'error': 'Database operation failed', 'details': str(e)}, 500
+            return jsonify({'error': 'Database operation failed', 'details': str(e)}), 500
 
     def delete(self, book_id):
         """
@@ -191,24 +187,21 @@ class Book(Resource):
 
 class Ratings(Resource):
     def get(self):
-        """
-        A Resource class to fetch ratings based on filter criteria provided through query parameters.
-        """
-        args = request.args
         query = {}
 
-        # Build the MongoDB query based on provided query parameters
-        for key, value in args.items():
+        # Build the MongoDB query based on provided query  parameters
+        for key, value in request.args.items():
             # Assume all values are stored as strings; modify if your schema differs
             query[key] = value
 
         try:
             # Execute the query using MongoDB's find method
-            filtered_ratings = list(ratings.find(query))
+            filtered_ratings = list(ratings.find(query,{'_id':0}))
+            return jsonify(filtered_ratings)
         except Exception as e:
             return {'error': 'Database query failed', 'details': str(e)}, 500
 
-        return {'ratings': filtered_ratings}, 200
+
 
 
 class Rating(Resource):
@@ -220,11 +213,15 @@ class Rating(Resource):
             # Use the find_one method to retrieve the rating by its ID from MongoDB
             rating = ratings.find_one({'id': rate_id})
             if rating:
-                return rating, 200
+                # Convert ObjectId to string if necessary and prepare the response
+                if '_id' in rating:
+                    rating['ratingID'] = str(rating['_id'])  # Convert ObjectId to string and rename the key
+                    del rating['_id']  # Remove the original '_id' to avoid serialization issues
+                return jsonify(rating)
             else:
-                return {'error': 'Rating not found'}, 404
+                return jsonify({'error': 'Rating not found'}), 404
         except Exception as e:
-            return {'error': 'Database operation failed', 'details': str(e)}, 500
+            return jsonify({'error': 'Database operation failed', 'details': str(e)}), 500
 
 
 class RateValues(Resource):
@@ -287,5 +284,3 @@ api.add_resource(Ratings, '/ratings')
 api.add_resource(Rating, '/ratings/<string:rate_id>')
 api.add_resource(RateValues, '/ratings/<string:rate_id>/values')
 api.add_resource(Top, '/top')
-
-
