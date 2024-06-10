@@ -29,6 +29,8 @@ services:
         target: /app
     ports:
       - "5002:80"
+    environment:
+      - BOOKS_SERVICE_URL=http://books:80
     expose:
       - 80
     depends_on:
@@ -44,6 +46,8 @@ services:
         target: /app
     ports:
       - "5003:80"
+    environment:
+      - BOOKS_SERVICE_URL=http://books:80
     expose:
       - 80
     depends_on:
@@ -52,9 +56,12 @@ services:
 
   nginx:
     image: nginx:latest # pulling image from DockerHub
+    build: ./nginx
     restart: always
     ports:
       - "80:80"
+#    volumes:
+#      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
     expose:
       - 80
     depends_on:

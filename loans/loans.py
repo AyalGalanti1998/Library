@@ -1,4 +1,5 @@
 import pymongo
+import requests
 from flask import Flask, request, jsonify
 from flask_restful import Resource, Api, reqparse
 import uuid
@@ -8,7 +9,7 @@ app = Flask(__name__)
 api = Api(app)
 
 MongoDB_Url = "mongodb://mongo:27017/"
-Books_Url = 'http://127.0.0.1:5001/books'
+
 
 client = pymongo.MongoClient(MongoDB_Url)
 db = client["library"]  # 'library' is the database name
@@ -33,21 +34,19 @@ class Loans(Resource):
         #     return {'error': 'Database query failed', 'details': str(e)}, 500
         #
         # return {'loans': filtered_loans}, 200
-        args = request.args
         query = {}
 
         # Build the MongoDB query based on provided query parameters
-        for key, value in args.items():
+        for key, value in  request.args.items():
             # Assume all values are stored as strings; modify if your schema differs
             query[key] = value
 
         try:
             # Execute the query using MongoDB's find method
-            filtered_loans = list(loans.find(query))
+            filtered_loans = list(loans.find(query, {'_id': 0}))
+            return jsonify(filtered_loans)
         except Exception as e:
             return {'error': 'Database query failed', 'details': str(e)}, 500
-
-        return {'loans': filtered_loans}, 200
 
     def post(self):
 
@@ -78,9 +77,10 @@ class Loans(Resource):
                 {'memberName': args['memberName']}) >= 2:
             return {"error": "Member has already 2 or more books on loan"}, 422
 
-        query = f"{Books_Url}?q=isbn:{args["ISBN"]}"
         try:
-            response = request.get(query)
+            isbn = args['ISBN']
+            books_url =f'http://books:80/books?ISBN={isbn}'
+            response = requests.get(books_url)
             response.raise_for_status()
             if response.status_code != 200:
                 return {"error": 'Database operation failed'}, 500
@@ -102,33 +102,36 @@ class Loans(Resource):
             loans.insert_one(loan)
             return {'loan_id': loan_id}, 201
         except Exception as e:
-            return {'error': e }, 404
+            return {'error': str(e) }, 404
 
 
 class Loan(Resource):
     def get(self, loan_id):
         try:
             # Use the find_one method to retrieve the book by its ID from MongoDB
-            loan = loans.find_one({'id': loan_id})
+            loan = loans.find_one({'loanID': loan_id}, {'_id': 0})
             if loan:
-                return loan, 200
+                    return loan, 200
             else:
                 return {'error': 'Loan not found'}, 404
         except Exception as e:
             return {'error': 'Database operation failed', 'details': str(e)}, 500
 
+
+
     def delete(self, loan_id):
         try:
             # First check if the loan exists
-            loan = loans.find_one({'id': loan_id})
+            loan = loans.find_one({'loanID': loan_id})
             if loan:
                 # If the book exists, delete it from the books collection
-                loans.delete_one({'id': loan_id})
+                loans.delete_one({'loanID': loan_id})
                 return loan_id, 200
             else:
                 return {'error': 'Loan not found'}, 404
         except Exception as e:
             return {'error': 'Database operation failed', 'details': str(e)}, 500
+
 
 
 def is_valid_date(date_string):
@@ -144,3 +147,6 @@ def is_valid_date(date_string):
 
 api.add_resource(Loans, '/loans')
 api.add_resource(Loan, '/loan/<string:loan_id>')
+
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=5002, debug=True)
