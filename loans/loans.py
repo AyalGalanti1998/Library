@@ -10,7 +10,6 @@ api = Api(app)
 
 MongoDB_Url = "mongodb://mongo:27017/"
 
-
 client = pymongo.MongoClient(MongoDB_Url)
 db = client["library"]  # 'library' is the database name
 loans = db["loans"]
@@ -19,25 +18,10 @@ loans = db["loans"]
 class Loans(Resource):
 
     def get(self):
-        # args = request.args
-        # query = {}
-        #
-        # # Build the MongoDB query based on provided query parameters
-        # for key, value in args.items():
-        #     # Assume all values are stored as strings; modify if your schema differs
-        #     query[key] = value
-        #
-        # try:
-        #     # Execute the query using MongoDB's find method
-        #     filtered_loans = list(loans.find(query))
-        # except Exception as e:
-        #     return {'error': 'Database query failed', 'details': str(e)}, 500
-        #
-        # return {'loans': filtered_loans}, 200
         query = {}
 
         # Build the MongoDB query based on provided query parameters
-        for key, value in  request.args.items():
+        for key, value in request.args.items():
             # Assume all values are stored as strings; modify if your schema differs
             query[key] = value
 
@@ -49,46 +33,48 @@ class Loans(Resource):
             return {'error': 'Database query failed', 'details': str(e)}, 500
 
     def post(self):
-
-        # Check the content type of the request to ensure it's JSON
-        if request.headers['Content-Type'] != 'application/json':
-            return {'error': 'Unsupported media type'}, 415
-
-        # Initialize a request parser to validate and parse input data
-        parser = reqparse.RequestParser()
-        parser.add_argument('memberName', required=True, help="member name cannot be blank")
-        parser.add_argument('ISBN', required=True, help="ISBN cannot be blank")
-        parser.add_argument('loanDate', required=True, help="loan date cannot be blank")
-
-        # Parse the input data
         try:
-            args = parser.parse_args()
-        except Exception as e:
-            return {"error": e}, 422
 
-        if not is_valid_date(args['loanDate']):
-            return ("error: Invalid date"), 422
+            # Check the content type of the request to ensure it's JSON
+            if request.headers['Content-Type'] != 'application/json':
+                return {'error': 'Unsupported media type'}, 415
 
-        if loans.find_one({'ISBN': args['ISBN']}):
-            return {"error": "Book is already on loan"}, 422
+            # Initialize a request parser to validate and parse input data
+            parser = reqparse.RequestParser()
+            parser.add_argument('memberName', required=True, help="member name cannot be blank")
+            parser.add_argument('ISBN', required=True, help="ISBN cannot be blank")
+            parser.add_argument('loanDate', required=True, help="loan date cannot be blank")
 
-        # Check if the member already has 2 or more books on loan
-        if loans.count_documents(
-                {'memberName': args['memberName']}) >= 2:
-            return {"error": "Member has already 2 or more books on loan"}, 422
+            # Parse the input data
+            try:
+                args = parser.parse_args()
+            except Exception as e:
+                return {"error": "Please enter valid loan details: memberName,ISBN,loanDate"}, 422
 
-        try:
-            isbn = args['ISBN']
-            books_url =f'http://books:80/books?ISBN={isbn}'
-            response = requests.get(books_url)
-            response.raise_for_status()
-            if response.status_code != 200:
-                return {"error": 'Database operation failed'}, 500
+            if not is_valid_date(args['loanDate']):
+                return {"error": "Invalid date"}, 422
 
-            if not response:
-                return {"error": "This book is not found in the library"}, 422
+            if loans.find_one({'ISBN': args['ISBN']}):
+                return {"error": "Book is already on loan"}, 422
 
-            book = response.json()[0]
+            # Check if the member already has 2 or more books on loan
+            if loans.count_documents(
+                    {'memberName': args['memberName']}) >= 2:
+                return {"error": "Member has already 2 or more books on loan"}, 422
+
+            try:
+                isbn = args['ISBN']
+                books_url = f'http://books:80/books?ISBN={isbn}'
+                response = requests.get(books_url)
+                if not response.ok:
+                    return {'message': f'Book does not exist in the library'}, 422
+            except Exception as e:
+                return {'message': f'Error fetching book from library: {str(e)}'}, 500
+
+            try:
+                book = response.json()[0]
+            except Exception as e:
+                return {'message': f'Book does not exist in the library'},422
 
             loan_id = str(uuid.uuid4())
             loan = {
@@ -98,11 +84,11 @@ class Loans(Resource):
                 'title': book['title'],
                 'bookID': book['id'],
                 'loanID': loan_id
-            }
+                }
             loans.insert_one(loan)
             return {'loan_id': loan_id}, 201
         except Exception as e:
-            return {'error': str(e) }, 404
+            return {'error': str(e)}
 
 
 class Loan(Resource):
@@ -111,13 +97,11 @@ class Loan(Resource):
             # Use the find_one method to retrieve the book by its ID from MongoDB
             loan = loans.find_one({'loanID': loan_id}, {'_id': 0})
             if loan:
-                    return loan, 200
+                return loan, 200
             else:
                 return {'error': 'Loan not found'}, 404
         except Exception as e:
             return {'error': 'Database operation failed', 'details': str(e)}, 500
-
-
 
     def delete(self, loan_id):
         try:
@@ -131,7 +115,6 @@ class Loan(Resource):
                 return {'error': 'Loan not found'}, 404
         except Exception as e:
             return {'error': 'Database operation failed', 'details': str(e)}, 500
-
 
 
 def is_valid_date(date_string):
