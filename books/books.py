@@ -97,7 +97,7 @@ class Books(Resource):
         ratings.insert_one({'id': book_id, 'values': [], 'average': 0, 'title': args['title']})
 
         # Return the new book details with 201 Created status
-        return {'book_id': book_id}, 201
+        return {'message': f'Book with ID {book_id} was added'}, 201
 
 
 class Book(Resource):
@@ -251,7 +251,7 @@ class RateValues(Resource):
             new_average = sum(new_values) / len(new_values)
             # Update the values and average in the MongoDB document
             ratings.update_one({'id': rate_id}, {'$set': {'values': new_values, 'average': new_average}})
-            return {'new_average': new_average}, 201
+            return {'New rating was added. new_average': new_average}, 201
         except Exception as e:
             return {'error': 'Database update failed', 'details': str(e)}, 500
 

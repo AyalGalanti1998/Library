@@ -92,7 +92,7 @@ class Loans(Resource):
                 'loanID': loan_id
                 }
             loans.insert_one(loan)
-            return {'loan_id': loan_id}, 201
+            return {'message': f'Loan with ID {loan_id} was added'}, 201
         except Exception as e:
             return {'error': str(e)}
 
@@ -116,7 +116,7 @@ class Loan(Resource):
             if loan:
                 # If the book exists, delete it from the books collection
                 loans.delete_one({'loanID': loan_id})
-                return loan_id, 200
+                return {'message': f'Loan with ID {loan_id} deleted'}, 200
             else:
                 return {'error': 'Loan not found'}, 404
         except Exception as e:
