@@ -13,6 +13,7 @@ MongoDB_Url = "mongodb://mongo:27017/"
 client = pymongo.MongoClient(MongoDB_Url)
 db = client["library"]  # 'library' is the database name
 loans = db["loans"]
+usedIds = db["usedId"]
 
 
 class Loans(Resource):
@@ -76,13 +77,18 @@ class Loans(Resource):
             except Exception as e:
                 return {'message': f'Book does not exist in the library'},422
 
-            loan_id = str(uuid.uuid4())
+            while True:
+                loan_id = str(uuid.uuid4())
+                if usedIds.find_one({'loanID': loan_id}) is None:
+                    usedIds.insert_one({'loanID': loan_id})
+                    break
+
             loan = {
                 'memberName': args['memberName'],
                 'ISBN': args['ISBN'],
-                'loanDate': args['loanDate'],
                 'title': book['title'],
                 'bookID': book['id'],
+                'loanDate': args['loanDate'],
                 'loanID': loan_id
                 }
             loans.insert_one(loan)
@@ -129,7 +135,7 @@ def is_valid_date(date_string):
 
 
 api.add_resource(Loans, '/loans')
-api.add_resource(Loan, '/loan/<string:loan_id>')
+api.add_resource(Loan, '/loans/<string:loan_id>')
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=80, debug=True)

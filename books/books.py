@@ -18,6 +18,8 @@ client = pymongo.MongoClient(MongoDB_Url)
 db = client["library"]  # 'library' is the database name
 books = db["books"]  # 'books' collection
 ratings = db["ratings"]  # 'ratings' collection
+usedIds = db["usedId"]
+
 
 
 class Books(Resource):
@@ -63,7 +65,11 @@ class Books(Resource):
             return {'error': 'A book with the same ISBN already exists'}, 422
 
         # Generate a unique ID for the book
-        book_id = str(uuid.uuid4())
+        while True:
+            book_id = str(uuid.uuid4())
+            if usedIds.find_one({'BookID': book_id}) is None:
+                usedIds.insert_one({'BookID': book_id})
+                break
 
         # Fetch book data from an external API using the ISBN
         try:
