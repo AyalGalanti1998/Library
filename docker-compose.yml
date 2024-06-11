@@ -15,6 +15,9 @@ services:
         target: /app
     ports:
       - "5001:80"
+    environment:
+       - MONGO_URL=mongodb://mongo:27017/BooksDB
+       - PORT=80
     depends_on:
       - "mongo"
 
@@ -28,7 +31,8 @@ services:
     ports:
       - "5002:80"
     environment:
-      - BOOKS_SERVICE_URL=http://books:80
+     # - BOOKS_SERVICE_URL=http://books:80
+      - MONGO_URL=mongodb://mongo:27017/LoansDB
     depends_on:
       - "mongo"
       - "books"
@@ -40,10 +44,11 @@ services:
       - type: bind
         source: ./loans
         target: /app
+    environment:
+      #- BOOKS_SERVICE_URL=http://books:80
+      - MONGO_URL=mongodb://mongo:27017/LoansDB
     ports:
       - "5003:80"
-    environment:
-      - BOOKS_SERVICE_URL=http://books:80
     depends_on:
       - "mongo"
       - "books"
@@ -54,8 +59,8 @@ services:
     restart: always
     ports:
       - "80:80"
-#    volumes:
-#      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
     expose:
       - 80
     depends_on:
