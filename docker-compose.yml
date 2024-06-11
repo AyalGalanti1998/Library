@@ -1,4 +1,4 @@
-version: '1'
+version: '3.8'
 
 services:
   mongo:
@@ -15,8 +15,6 @@ services:
         target: /app
     ports:
       - "5001:80"
-    expose:
-      - 80
     depends_on:
       - "mongo"
 
@@ -31,8 +29,6 @@ services:
       - "5002:80"
     environment:
       - BOOKS_SERVICE_URL=http://books:80
-    expose:
-      - 80
     depends_on:
       - "mongo"
       - "books"
@@ -48,8 +44,6 @@ services:
       - "5003:80"
     environment:
       - BOOKS_SERVICE_URL=http://books:80
-    expose:
-      - 80
     depends_on:
       - "mongo"
       - "books"

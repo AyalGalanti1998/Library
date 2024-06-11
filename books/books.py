@@ -3,7 +3,7 @@ from json import dumps
 
 import pymongo
 from flask import Flask, request, jsonify
-from flask_restful import Resource, Api, reqparse
+from flask_restful import Resource, Api, reqparse, abort
 import requests
 import uuid
 from pymongo import MongoClient
@@ -33,8 +33,6 @@ class Books(Resource):
         except Exception as e:
             return {'error': 'Database query failed', 'details': str(e)}, 500
 
-
-
     def post(self):
         """
         Creates a new book entry based on data provided via a POST request, fetching additional data from external APIs.
@@ -57,7 +55,8 @@ class Books(Resource):
         try:
             args = parser.parse_args()
         except Exception as e:
-            return {"error": e}, 422
+            return {"error": "Please enter a valid title,ISBN, and genre (Fiction, "
+                             "Children, Biography, Science, Science Fiction, Fantasy,Other"}, 422
 
         # Check if a book with the same ISBN already exists
         if books.find_one({'ISBN': args['ISBN']}):
@@ -196,12 +195,10 @@ class Ratings(Resource):
 
         try:
             # Execute the query using MongoDB's find method
-            filtered_ratings = list(ratings.find(query,{'_id':0}))
+            filtered_ratings = list(ratings.find(query, {'_id': 0}))
             return jsonify(filtered_ratings)
         except Exception as e:
             return {'error': 'Database query failed', 'details': str(e)}, 500
-
-
 
 
 class Rating(Resource):
@@ -216,7 +213,6 @@ class Rating(Resource):
                 # Convert ObjectId to string if necessary and prepare the response
                 if '_id' in rating:
                     rating['ratingID'] = str(rating['_id'])  # Convert ObjectId to string and rename the key
-                    del rating['_id']  # Remove the original '_id' to avoid serialization issues
                 return jsonify(rating)
             else:
                 return jsonify({'error': 'Rating not found'}), 404
@@ -260,23 +256,32 @@ class Top(Resource):
         """
 
     def get(self):
-        # Filter books that have at least 3 ratings.
-        pipeline = [
-            {"$match": {"values": {"$size": 3}}},
-            {"$sort": {"average": -1}},
-            {"$limit": 3}  # Limits the result to top 3
-        ]
-        top_ratings = list(ratings.aggregate(pipeline))
+        # Compute the top-rated books dynamically
+        top_books = self.find_top()
 
-        # Additional logic to include ties at the 3rd place if necessary
-        if len(top_ratings) == 3:
-            third_average = top_ratings[-1]['average']
-            tie_ratings = list(ratings.find({"average": third_average}))
-            if len(tie_ratings) > 1:
-                top_ratings.extend([rating for rating in tie_ratings if rating not in top_ratings])
+        if top_books:
+            return top_books, 200
+        else:
+            return [], 200
 
-        return jsonify(json.loads(dumps(top_ratings)))
+    def find_top(self):
+        # Find ratings with at least 3 values and calculate averages
+        top_ratings = list(ratings.find({'values': {'$exists': True, '$not': {'$size': 0}}}))
+        top_ratings = [r for r in top_ratings if len(r['values']) >= 3]
+        sorted_ratings = sorted(top_ratings, key=lambda x: x['average'], reverse=True)
 
+        top_books = sorted_ratings[:3]
+        if len(sorted_ratings) > 3:
+            threshold_average = top_books[-1]['average']
+            additional_books = [r for r in sorted_ratings[3:] if r['average'] == threshold_average]
+            top_books.extend(additional_books)
+
+        result = [{
+            'id': book['id'],
+            'title': book['title'],
+            'average': book['average']
+        } for book in top_books]
+        return result
 
 api.add_resource(Books, '/books')
 api.add_resource(Book, '/books/<string:book_id>')
@@ -286,4 +291,4 @@ api.add_resource(RateValues, '/ratings/<string:rate_id>/values')
 api.add_resource(Top, '/top')
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    app.run(host="0.0.0.0", port=80, debug=True)
