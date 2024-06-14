@@ -31,7 +31,6 @@ services:
     ports:
       - "5002:80"
     environment:
-     # - BOOKS_SERVICE_URL=http://books:80
       - MONGO_URL=mongodb://mongo:27017/LoansDB
     depends_on:
       - "mongo"
@@ -45,7 +44,6 @@ services:
         source: ./loans
         target: /app
     environment:
-      #- BOOKS_SERVICE_URL=http://books:80
       - MONGO_URL=mongodb://mongo:27017/LoansDB
     ports:
       - "5003:80"
