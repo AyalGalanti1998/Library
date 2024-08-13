@@ -15,7 +15,11 @@ MongoDB: Serves as the database for storing book and loan information, providing
 Docker & Docker Compose: The application is fully containerized, with Docker Compose managing the deployment of the multi-container setup, making it easy to start and maintain the system.
 
 How to Run:
+
 Clone the repository.
+
 Ensure Docker and Docker Compose are installed.
+
 Run docker-compose up to start all services.
+
 This setup provides a scalable, easy-to-deploy library management system suitable for various environments
