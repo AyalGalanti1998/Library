@@ -1,4 +1,6 @@
-This project is a library management system designed with a microservices architecture, ensuring modularity and scalability. The system includes:
+This project is a library management system designed with a microservices architecture, ensuring modularity and scalability.
+
+The system includes:
 Books Service: Manages the catalog of books, handling operations like adding, updating, and retrieving book details.
 Loans Service: Tracks book loans, including borrowers, due dates, and returns.
 The architecture utilizes:
